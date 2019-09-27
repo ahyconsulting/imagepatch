@@ -1,7 +1,7 @@
 <?php
 /**
- * Copyright © Magento, Inc. All rights reserved.
- * See COPYING.txt for license details.
+ *  Patch to render images from non cached directories
+ *  Harpreet Singh
  */
 
 namespace Magento\Catalog\Model\View\Asset;
@@ -12,11 +12,6 @@ use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Framework\View\Asset\ContextInterface;
 use Magento\Framework\View\Asset\LocalInterface;
 
-/**
- * A locally available image file asset that can be referred with a file path
- *
- * This class is a value object with lazy loading of some of its data (content, physical file path)
- */
 class Image implements LocalInterface
 {
     /**
@@ -92,7 +87,81 @@ class Image implements LocalInterface
      */
     public function getUrl()
     {
-        return $this->context->getBaseUrl() . DIRECTORY_SEPARATOR . $this->getImageInfo();
+        $url = $this->context->getBaseUrl() . DIRECTORY_SEPARATOR . $this->getImageInfo();
+        $imageFile = $this->context->getPath() . DIRECTORY_SEPARATOR . $this->getImageInfo();
+        if (!file_exists($imageFile)) {
+            $url = $this->context->getBaseUrl() . DIRECTORY_SEPARATOR . $this->getImageInfoWithoutCache();
+        }
+        return $url;
+    }
+
+    private function getImageInfoWithoutCache()
+    {
+        $path = $this->getFilePath();
+        return preg_replace('|\Q' . DIRECTORY_SEPARATOR . '\E+|', DIRECTORY_SEPARATOR, $path);
+    }
+
+    /**
+     * Generate path from image info
+     *
+     * @return string
+     */
+    private function getImageInfo()
+    {
+        $path = $this->getModule()
+            . DIRECTORY_SEPARATOR . $this->getMiscPath()
+            . DIRECTORY_SEPARATOR . $this->getFilePath();
+        return preg_replace('|\Q' . DIRECTORY_SEPARATOR . '\E+|', DIRECTORY_SEPARATOR, $path);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getModule()
+    {
+        return 'cache';
+    }
+
+    /**
+     * Retrieve part of path based on misc params
+     *
+     * @return string
+     */
+    private function getMiscPath()
+    {
+        return $this->encryptor->hash(
+            implode('_', $this->convertToReadableFormat($this->miscParams)),
+            Encryptor::HASH_VERSION_MD5
+        );
+    }
+
+    /**
+     * Converting bool into a string representation
+     * @param $miscParams
+     * @return array
+     */
+    private function convertToReadableFormat($miscParams)
+    {
+        $miscParams['image_height'] = 'h:' . ($miscParams['image_height'] ?? 'empty');
+        $miscParams['image_width'] = 'w:' . ($miscParams['image_width'] ?? 'empty');
+        $miscParams['quality'] = 'q:' . ($miscParams['quality'] ?? 'empty');
+        $miscParams['angle'] = 'r:' . ($miscParams['angle'] ?? 'empty');
+        $miscParams['keep_aspect_ratio'] = (isset($miscParams['keep_aspect_ratio']) ? '' : 'non') . 'proportional';
+        $miscParams['keep_frame'] = (isset($miscParams['keep_frame']) ? '' : 'no') . 'frame';
+        $miscParams['keep_transparency'] = (isset($miscParams['keep_transparency']) ? '' : 'no') . 'transparency';
+        $miscParams['constrain_only'] = (isset($miscParams['constrain_only']) ? 'do' : 'not') . 'constrainonly';
+        $miscParams['background'] = isset($miscParams['background'])
+            ? 'rgb' . implode(',', $miscParams['background'])
+            : 'nobackground';
+        return $miscParams;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getFilePath()
+    {
+        return $this->filePath;
     }
 
     /**
@@ -140,73 +209,10 @@ class Image implements LocalInterface
 
     /**
      * {@inheritdoc}
-     */
-    public function getFilePath()
-    {
-        return $this->filePath;
-    }
-
-    /**
-     * {@inheritdoc}
      * @return ContextInterface
      */
     public function getContext()
     {
         return $this->context;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getModule()
-    {
-        return 'cache';
-    }
-
-    /**
-     * Retrieve part of path based on misc params
-     *
-     * @return string
-     */
-    private function getMiscPath()
-    {
-        return $this->encryptor->hash(
-            implode('_', $this->convertToReadableFormat($this->miscParams)),
-            Encryptor::HASH_VERSION_MD5
-        );
-    }
-
-    /**
-     * Generate path from image info
-     *
-     * @return string
-     */
-    private function getImageInfo()
-    {
-        $path = $this->getModule()
-            . DIRECTORY_SEPARATOR . $this->getMiscPath()
-            . DIRECTORY_SEPARATOR . $this->getFilePath();
-        return preg_replace('|\Q'. DIRECTORY_SEPARATOR . '\E+|', DIRECTORY_SEPARATOR, $path);
-    }
-
-    /**
-     * Converting bool into a string representation
-     * @param $miscParams
-     * @return array
-     */
-    private function convertToReadableFormat($miscParams)
-    {
-        $miscParams['image_height'] = 'h:' . ($miscParams['image_height'] ?? 'empty');
-        $miscParams['image_width'] = 'w:' . ($miscParams['image_width'] ?? 'empty');
-        $miscParams['quality'] = 'q:' . ($miscParams['quality'] ?? 'empty');
-        $miscParams['angle'] = 'r:' . ($miscParams['angle'] ?? 'empty');
-        $miscParams['keep_aspect_ratio'] = (isset($miscParams['keep_aspect_ratio']) ? '' : 'non') . 'proportional';
-        $miscParams['keep_frame'] = (isset($miscParams['keep_frame']) ? '' : 'no') . 'frame';
-        $miscParams['keep_transparency'] = (isset($miscParams['keep_transparency']) ? '' : 'no') . 'transparency';
-        $miscParams['constrain_only'] = (isset($miscParams['constrain_only']) ? 'do' : 'not') . 'constrainonly';
-        $miscParams['background'] = isset($miscParams['background'])
-            ? 'rgb' . implode(',', $miscParams['background'])
-            : 'nobackground';
-        return $miscParams;
     }
 }
